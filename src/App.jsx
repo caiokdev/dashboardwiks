@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { FunnelChart, Funnel, LabelList, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import { parseISO, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, format } from 'date-fns';
 import './index.css';
 
 // Credenciais do Supabase configuradas com a URL da API e a Chave Anon
@@ -11,12 +12,12 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // Nome da tabela atualizado
 const NOME_DA_TABELA = 'metricas_semanais';
 
-const CustomTooltip = ({ active, payload, label }) => {
+const CustomTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
     return (
-      <div className="custom-tooltip">
-        <p className="label">{label}</p>
-        <p className="value">{payload[0].value}</p>
+      <div className="custom-tooltip" style={{ backgroundColor: '#1e293b', padding: '10px', borderRadius: '8px', border: '1px solid #334155' }}>
+        <p className="label" style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{payload[0].payload.etapa}</p>
+        <p className="value" style={{ color: '#38bdf8' }}>Valor: {payload[0].value}</p>
       </div>
     );
   }
@@ -24,26 +25,95 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 export default function DashboardLeads() {
+  // Auth state
+  const [currentUser, setCurrentUser] = useState(null); // null if not logged in
+  const [usernameInput, setUsernameInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [loginError, setLoginError] = useState('');
+  
+  // Admin Management Modal State
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [allUsers, setAllUsers] = useState([]);
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newRole, setNewRole] = useState('cliente');
+  const [newIdCliente, setNewIdCliente] = useState('');
+  
   const [dadosBrutos, setDadosBrutos] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [clienteSelecionado, setClienteSelecionado] = useState('');
   const [dadosGrafico, setDadosGrafico] = useState([]);
   const [kpiData, setKpiData] = useState({ leads: 0, saudacoes: 0, conversas: 0, agendamentos: 0 });
-  const [carregando, setCarregando] = useState(true);
+  
+  // Novos estados para filtro de data
+  const [dateFilter, setDateFilter] = useState('30d');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  
+  const [carregando, setCarregando] = useState(false); // Mudado para false por causa da tela de login
 
+  // Hook que só carrega a dashboard se o userId estiver resolvido
   useEffect(() => {
-    carregarDados();
-  }, []);
+    if (currentUser) {
+      carregarDados();
+    }
+  }, [dateFilter, customStartDate, customEndDate, currentUser]);
 
   useEffect(() => {
     processarDadosDoCliente();
   }, [clienteSelecionado, dadosBrutos]);
 
   const carregarDados = async () => {
+    // Se for personalizado e as datas estiverem vazias, não faz fetch pra não dar erro
+    if (dateFilter === 'personalizado' && (!customStartDate || !customEndDate)) {
+      return; 
+    }
+
     setCarregando(true);
-    const { data, error } = await supabase
-      .from(NOME_DA_TABELA)
-      .select('*');
+    
+    let query = supabase.from(NOME_DA_TABELA).select('*');
+
+    // Se o usuário não for admin, ele só vê os logs do id_cliente que pertence a ele
+    if (currentUser && currentUser.role !== 'admin' && currentUser.id_cliente) {
+       query = query.eq('id_cliente', currentUser.id_cliente);
+    }
+
+    // Lógica para determinar Inicio e Fim baseado no filtro selecionado
+    const hoje = new Date();
+    let dataInicioStr = null;
+    let dataFimStr = null;
+
+    if (dateFilter === '7d') {
+      dataInicioStr = format(subDays(hoje, 7), 'yyyy-MM-dd');
+    } else if (dateFilter === 'semana_atual') {
+      dataInicioStr = format(startOfWeek(hoje, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    } else if (dateFilter === 'semana_passada') {
+      const inicioSemanaAtual = startOfWeek(hoje, { weekStartsOn: 1 });
+      dataInicioStr = format(subDays(inicioSemanaAtual, 7), 'yyyy-MM-dd');
+      dataFimStr = format(subDays(inicioSemanaAtual, 1), 'yyyy-MM-dd');
+    } else if (dateFilter === 'mes_atual') {
+      dataInicioStr = format(startOfMonth(hoje), 'yyyy-MM-dd');
+    } else if (dateFilter === 'mes_passado') {
+      const primeiroDiaMesAtual = startOfMonth(hoje);
+      const ultimoDiaMesPassado = subDays(primeiroDiaMesAtual, 1);
+      dataInicioStr = format(startOfMonth(ultimoDiaMesPassado), 'yyyy-MM-dd');
+      dataFimStr = format(endOfMonth(ultimoDiaMesPassado), 'yyyy-MM-dd');
+    } else if (dateFilter === '30d') {
+      dataInicioStr = format(subDays(hoje, 30), 'yyyy-MM-dd');
+    } else if (dateFilter === 'personalizado') {
+      dataInicioStr = customStartDate;
+      dataFimStr = customEndDate;
+    }
+
+    // Aplica o filtro na querie (com UTC para não dar bug pelo JS)
+    if (dataInicioStr) {
+      query = query.gte('created_at', `${dataInicioStr}T00:00:00.000Z`);
+    }
+    if (dataFimStr) {
+      query = query.lte('created_at', `${dataFimStr}T23:59:59.999Z`);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Erro ao buscar dados:', error);
@@ -53,14 +123,16 @@ export default function DashboardLeads() {
 
     setDadosBrutos(data);
 
-    // Extrai a lista de clientes únicos para o select
+    // Extrai a lista de clientes únicos para o select e previne reset se já tem selecionado
     const clientesUnicos = [...new Set(data.map(item => item.id_cliente))];
     setClientes(clientesUnicos);
 
-    // Seleciona o primeiro cliente por padrão, se existir
-    if (clientesUnicos.length > 0) {
+    if (clientesUnicos.length > 0 && !clientesUnicos.includes(clienteSelecionado)) {
+      setClienteSelecionado(clientesUnicos[0]);
+    } else if (!clienteSelecionado && clientesUnicos.length > 0) {
       setClienteSelecionado(clientesUnicos[0]);
     }
+    
     setCarregando(false);
   };
 
@@ -91,6 +163,143 @@ export default function DashboardLeads() {
     ]);
   };
 
+  // Funções Utilitárias para as Novas Taxas
+  const calcularTaxa = (parte, todo) => {
+    if (todo === 0) return '0.0%';
+    return ((parte / todo) * 100).toFixed(1) + '%';
+  };
+
+  const taxaResposta = calcularTaxa(kpiData.saudacoes, kpiData.leads);
+  const taxaConversaoConversa = calcularTaxa(kpiData.conversas, kpiData.saudacoes);
+  const taxaAgendamento = calcularTaxa(kpiData.agendamentos, kpiData.leads);
+
+  // ---------------- AUTENTICAÇÃO E ADMIN ----------------
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoginError('');
+    setCarregando(true);
+    
+    // Busca usuário ignorando letras minúsculas/maiúsculas usando ilike, no mundo real é ideal eq
+    const { data, error } = await supabase
+      .from('usuarios')
+      .select('*')
+      .eq('username', usernameInput)
+      .limit(1);
+
+    if (error || !data || data.length === 0) {
+      setLoginError('Credenciais inválidas.');
+      setCarregando(false);
+      return;
+    }
+
+    const usuario = data[0];
+    if (usuario.password !== passwordInput) {
+      setLoginError('Credenciais inválidas.');
+      setCarregando(false);
+      return;
+    }
+
+    // Sucesso no login
+    setCurrentUser(usuario);
+    // Se não for admin, ele obrigatoriamente terá aquele select "travado" no nome do id_cliente dele.
+    if (usuario.role !== 'admin') {
+      setClienteSelecionado(usuario.id_cliente || '');
+    }
+    setCarregando(false);
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setUsernameInput('');
+    setPasswordInput('');
+    setDadosBrutos([]);
+  };
+
+  const carregarTodosUsuarios = async () => {
+    if (currentUser?.role !== 'admin') return;
+    const { data } = await supabase.from('usuarios').select('*');
+    if (data) setAllUsers(data);
+  };
+
+  const handleAbrirAdmin = () => {
+    setIsAdminModalOpen(true);
+    carregarTodosUsuarios();
+  };
+
+  const criarOuAtualizarUsuario = async (e) => {
+    e.preventDefault();
+    if (!newUsername || !newPassword) return alert("Preencha ao menos usuário e senha");
+    
+    // Verifica se usuário já existe para update
+    const existente = allUsers.find(u => u.username === newUsername);
+
+    if (existente) {
+      const { error } = await supabase.from('usuarios').update({ password: newPassword, role: newRole, id_cliente: newIdCliente }).eq('id', existente.id);
+      if (!error) {
+        alert("Usuário atualizado com sucesso!");
+        carregarTodosUsuarios();
+      } else {
+        alert("Erro ao atualizar: " + error.message);
+      }
+    } else {
+      const { error } = await supabase.from('usuarios').insert([{ username: newUsername, password: newPassword, role: newRole, id_cliente: newIdCliente }]);
+      if (!error) {
+        alert("Usuário criado com sucesso!");
+        setNewUsername('');
+        setNewPassword('');
+        setNewIdCliente('');
+        carregarTodosUsuarios();
+      } else {
+        alert("Erro ao criar: " + error.message);
+      }
+    }
+  };
+
+  const deletarUsuario = async (id_usuario) => {
+     if(window.confirm("Certeza que deseja deletar este usuário?")) {
+        await supabase.from('usuarios').delete().eq('id', id_usuario);
+        carregarTodosUsuarios();
+     }
+  };
+
+  // ---------------- RENDERIZAÇÃO DA TELA DE LOGIN ----------------
+  if (!currentUser) {
+    return (
+      <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f172a' }}>
+        <div style={{ backgroundColor: '#1e293b', padding: '3rem', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)', width: '100%', maxWidth: '400px' }}>
+          <h1 style={{ color: '#f8fafc', fontSize: '1.8rem', textAlign: 'center', marginBottom: '2rem' }}>Dashboard Login</h1>
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div>
+              <label style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'block' }}>Usuário</label>
+              <input 
+                type="text" 
+                autoComplete="username"
+                value={usernameInput} 
+                onChange={(e) => setUsernameInput(e.target.value)} 
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#fff' }} 
+              />
+            </div>
+            <div>
+              <label style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'block' }}>Senha</label>
+              <input 
+                type="password" 
+                autoComplete="current-password"
+                value={passwordInput} 
+                onChange={(e) => setPasswordInput(e.target.value)} 
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#fff' }} 
+              />
+            </div>
+            {loginError && <div style={{ color: '#ef4444', fontSize: '0.9rem' }}>{loginError}</div>}
+            <button type="submit" style={{ marginTop: '1rem', backgroundColor: '#3b82f6', color: '#fff', padding: '0.75rem', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>
+              {carregando ? 'Entrando...' : 'Entrar'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------------- RENDERIZAÇÃO PRINCIPAL ----------------
   if (carregando) {
     return (
       <div className="loading-container">
@@ -100,28 +309,91 @@ export default function DashboardLeads() {
     );
   }
 
+  const coresFunil = ['#3b82f6', '#8b5cf6', '#f59e0b', '#10b981'];
+
   return (
     <div className="dashboard-container">
       {/* Header */}
-      <header className="dashboard-header">
+      <header className="dashboard-header" style={{ flexWrap: 'wrap' }}>
         <h1 className="dashboard-title">Conversões & Leads</h1>
-        <div className="client-selector-container">
-          <label className="client-selector-label">Cliente:</label>
-          <select
-            className="client-select"
-            value={clienteSelecionado}
-            onChange={(e) => setClienteSelecionado(e.target.value)}
-          >
-            {clientes.map(cliente => (
-              <option key={cliente} value={cliente}>{cliente}</option>
-            ))}
-          </select>
+        <div className="filters-container" style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          
+          {/* Admin Tools */}
+          {currentUser.role === 'admin' && (
+            <button 
+              onClick={handleAbrirAdmin}
+              style={{ padding: '0.5rem 1rem', backgroundColor: '#475569', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.9rem' }}
+            >
+              ⚙️ Gerenciar Usuários
+            </button>
+          )}
+
+          {/* Date Filter */}
+          <div className="filter-group">
+            <label className="client-selector-label">Período:</label>
+            <select
+              className="client-select"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+            >
+              <option value="7d">Últimos 7 dias</option>
+              <option value="semana_atual">Semana Atual</option>
+              <option value="semana_passada">Semana Passada</option>
+              <option value="mes_atual">Mês Atual</option>
+              <option value="mes_passado">Mês Passado</option>
+              <option value="30d">Últimos 30 dias</option>
+              <option value="personalizado">Personalizado</option>
+            </select>
+            
+            {dateFilter === 'personalizado' && (
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <input 
+                  type="date" 
+                  className="client-select" 
+                  style={{ fontSize: '0.8rem', padding: '0.4rem' }}
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)} 
+                />
+                <span style={{ color: '#fff', alignSelf: 'center' }}>até</span>
+                <input 
+                  type="date" 
+                  className="client-select"
+                  style={{ fontSize: '0.8rem', padding: '0.4rem' }}
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)} 
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="filter-group">
+            <label className="client-selector-label">Cliente:</label>
+            {currentUser.role === 'admin' ? (
+              <select
+                className="client-select"
+                value={clienteSelecionado}
+                onChange={(e) => setClienteSelecionado(e.target.value)}
+              >
+                {clientes.map(cliente => (
+                  <option key={cliente} value={cliente}>{cliente}</option>
+                ))}
+              </select>
+            ) : (
+                <div style={{ padding: '0.5rem', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '6px', color: '#f8fafc', fontSize: '0.9rem' }}>
+                  {currentUser.id_cliente || 'Nenhum'}
+                </div>
+            )}
+          </div>
+
+          <button onClick={handleLogout} style={{ padding: '0.5rem 1rem', backgroundColor: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.9rem', marginLeft: 'auto' }}>
+            Sair
+          </button>
         </div>
       </header>
 
       {/* Main Content */}
       <main style={{ display: 'flex', flexDirection: 'column', gap: '2rem', flexGrow: 1 }}>
-        {/* KPI Cards Grid */}
+        {/* KPI Cards Grid (Métricas Base) */}
         <section className="kpi-grid">
           <div className="kpi-card" style={{ '--accent-gradient': 'linear-gradient(135deg, #3b82f6, #60a5fa)' }}>
             <div className="kpi-label">Total de Leads</div>
@@ -148,55 +420,106 @@ export default function DashboardLeads() {
           </div>
         </section>
 
-        {/* Big Chart Area */}
-        <section className="chart-container-wrapper">
-          <div className="chart-header">
-            <h2 className="chart-title">Análise do Funil</h2>
-            <p className="chart-subtitle">Taxa de retenção do usuário da captura ao agendamento</p>
+        {/* Conversion Rate Cards */}
+        <section className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))' }}>
+          <div className="kpi-card" style={{ '--accent-gradient': 'linear-gradient(135deg, #ec4899, #f472b6)', borderTop: '2px solid #ec4899' }}>
+            <div className="kpi-label">Taxa de Resposta</div>
+            <div className="kpi-value">{taxaResposta}</div>
+            <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>Saudações Respondidas / Leads</p>
           </div>
-          <div style={{ width: '100%', height: '400px' }}>
+          
+          <div className="kpi-card" style={{ '--accent-gradient': 'linear-gradient(135deg, #0ea5e9, #38bdf8)', borderTop: '2px solid #0ea5e9' }}>
+            <div className="kpi-label">Taxa de Conversão</div>
+            <div className="kpi-value">{taxaConversaoConversa}</div>
+            <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>Conversas / Saudações</p>
+          </div>
+
+          <div className="kpi-card" style={{ '--accent-gradient': 'linear-gradient(135deg, #ef4444, #f87171)', borderTop: '2px solid #ef4444' }}>
+            <div className="kpi-label">Taxa de Agendamento</div>
+            <div className="kpi-value">{taxaAgendamento}</div>
+            <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>Agendamentos / Leads</p>
+          </div>
+        </section>
+
+        {/* Big Chart Area */}
+        <section className="chart-container-wrapper" style={{ minHeight: '450px' }}>
+          <div className="chart-header">
+            <h2 className="chart-title">Análise do Funil (Mapeamento Linear)</h2>
+            <p className="chart-subtitle">Retenção de usuários por etapa (Topo -> Fundo)</p>
+          </div>
+          <div style={{ width: '100%', height: '350px' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={dadosGrafico}
-                margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
-              >
-                <defs>
-                  <linearGradient id="colorValor" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
-                <XAxis
-                  dataKey="etapa"
-                  axisLine={false}
-                  tickLine={false}
-                  stroke="#94a3b8"
-                  dy={10}
-                  tick={{ fontSize: 14, fontWeight: 500 }}
-                />
-                <YAxis
-                  allowDecimals={false}
-                  axisLine={false}
-                  tickLine={false}
-                  stroke="#94a3b8"
-                  tick={{ fontSize: 14 }}
-                />
-                <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1, strokeDasharray: '3 3' }} />
-                <Area
-                  type="monotone"
+              <FunnelChart>
+                <Tooltip content={<CustomTooltip />} />
+                <Funnel
                   dataKey="valor"
-                  stroke="#3b82f6"
-                  strokeWidth={4}
-                  fillOpacity={0.8}
-                  fill="#3b82f6"
-                  activeDot={{ r: 8, fill: '#60a5fa', stroke: '#fff', strokeWidth: 2 }}
-                />
-              </AreaChart>
+                  data={dadosGrafico}
+                  isAnimationActive
+                  labelLine={false}
+                >
+                  <LabelList position="right" fill="#e2e8f0" stroke="none" dataKey="etapa" style={{ fontSize: '14px', fontWeight: '500'}} />
+                  {
+                    dadosGrafico.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={coresFunil[index % coresFunil.length]} />
+                    ))
+                  }
+                </Funnel>
+              </FunnelChart>
             </ResponsiveContainer>
           </div>
         </section>
       </main>
+
+      {/* Admin Modal */}
+      {isAdminModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
+          <div style={{ backgroundColor: '#1e293b', padding: '2rem', borderRadius: '12px', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ color: '#f8fafc', margin: 0 }}>Gerenciar Usuários</h2>
+              <button onClick={() => setIsAdminModalOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+            </div>
+            
+            <form onSubmit={criarOuAtualizarUsuario} style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '2rem', padding: '1rem', backgroundColor: '#0f172a', borderRadius: '8px' }}>
+              <input type="text" placeholder="Usuário" value={newUsername} onChange={(e)=>setNewUsername(e.target.value)} style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #334155', backgroundColor: '#1e293b', color: '#fff' }} />
+              <input type="text" placeholder="Senha Nova" value={newPassword} onChange={(e)=>setNewPassword(e.target.value)} style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #334155', backgroundColor: '#1e293b', color: '#fff' }} />
+              <select value={newRole} onChange={(e)=>setNewRole(e.target.value)} style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #334155', backgroundColor: '#1e293b', color: '#fff' }}>
+                <option value="cliente">Cliente</option>
+                <option value="admin">Admin</option>
+              </select>
+              {newRole === 'cliente' && (
+                <input type="text" placeholder="id do cliente (Tabela)" value={newIdCliente} onChange={(e)=>setNewIdCliente(e.target.value)} style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #334155', backgroundColor: '#1e293b', color: '#fff' }} />
+              )}
+              <button type="submit" style={{ padding: '0.5rem 1rem', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Salvar</button>
+            </form>
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', color: '#f8fafc' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left' }}>
+                  <th style={{ padding: '0.5rem' }}>Usuário</th>
+                  <th style={{ padding: '0.5rem' }}>Senha</th>
+                  <th style={{ padding: '0.5rem' }}>Role</th>
+                  <th style={{ padding: '0.5rem' }}>ID Cliente Vinculado</th>
+                  <th style={{ padding: '0.5rem' }}>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allUsers.map((u) => (
+                  <tr key={u.id} style={{ borderBottom: '1px solid #334155' }}>
+                    <td style={{ padding: '0.5rem' }}>{u.username}</td>
+                    <td style={{ padding: '0.5rem', color: '#94a3b8' }}>{u.password}</td>
+                    <td style={{ padding: '0.5rem' }}>{u.role}</td>
+                    <td style={{ padding: '0.5rem' }}>{u.id_cliente || '-'}</td>
+                    <td style={{ padding: '0.5rem' }}>
+                      <button onClick={() => { setNewUsername(u.username); setNewRole(u.role); setNewIdCliente(u.id_cliente || ''); }} style={{ marginRight: '0.5rem', padding: '0.2rem 0.5rem', backgroundColor: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Editar</button>
+                      <button onClick={() => deletarUsuario(u.id)} style={{ padding: '0.2rem 0.5rem', backgroundColor: '#ef4444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Excluir</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
