@@ -5,12 +5,12 @@ import { parseISO, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, fo
 import './index.css';
 
 // Credenciais do Supabase configuradas com a URL da API e a Chave Anon
-const supabaseUrl = 'https://btwbwlaodbuxmelcbunr.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0d2J3bGFvZGJ1eG1lbGNidW5yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ1MDM2NjcsImV4cCI6MjA3MDA3OTY2N30.XSwGXfSWv_mWRtRmU_M2gse15Bw3ljFS05jf0fDMJrE';
+const supabaseUrl = 'https://mcyuqwrbmvvmofbvhrph.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1jeXVxd3JibXZ2bW9mYnZocnBoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDMwMjgsImV4cCI6MjA4ODgxOTAyOH0.jrSaQbZ1Lirj7QijMnaN-myEHoHt4j79uVPNrzXPgaE';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Nome da tabela atualizado
-const NOME_DA_TABELA = 'metricas_semanais';
+// Nome da tabela atualizado para a nova estrutura de leads brutos
+const NOME_DA_TABELA = 'leads_clientes';
 
 const CustomTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
@@ -39,6 +39,10 @@ export default function DashboardLeads() {
   const [newRole, setNewRole] = useState('cliente');
   const [newIdCliente, setNewIdCliente] = useState('');
   
+  // Database Client Renaming State
+  const [dbClienteAntigo, setDbClienteAntigo] = useState('');
+  const [dbClienteNovo, setDbClienteNovo] = useState('');
+  
   const [dadosBrutos, setDadosBrutos] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [clienteSelecionado, setClienteSelecionado] = useState('');
@@ -55,9 +59,12 @@ export default function DashboardLeads() {
   // Hook que só carrega a dashboard se o userId estiver resolvido
   useEffect(() => {
     if (currentUser) {
+      if (currentUser.role === 'admin') {
+        carregarTodosUsuarios();
+      }
       carregarDados();
     }
-  }, [dateFilter, customStartDate, customEndDate, currentUser]);
+  }, [dateFilter, currentUser]);
 
   useEffect(() => {
     processarDadosDoCliente();
@@ -105,12 +112,14 @@ export default function DashboardLeads() {
       dataFimStr = customEndDate;
     }
 
-    // Aplica o filtro na querie (com UTC para não dar bug pelo JS)
+    // Aplica o filtro na querie (convertendo o dia local para UTC)
     if (dataInicioStr) {
-      query = query.gte('created_at', `${dataInicioStr}T00:00:00.000Z`);
+      const startLocal = new Date(`${dataInicioStr}T00:00:00`);
+      query = query.gte('data_entrada', startLocal.toISOString());
     }
     if (dataFimStr) {
-      query = query.lte('created_at', `${dataFimStr}T23:59:59.999Z`);
+      const endLocal = new Date(`${dataFimStr}T23:59:59.999`);
+      query = query.lte('data_entrada', endLocal.toISOString());
     }
 
     const { data, error } = await query;
@@ -137,29 +146,46 @@ export default function DashboardLeads() {
   };
 
   const processarDadosDoCliente = () => {
-    if (!clienteSelecionado || dadosBrutos.length === 0) return;
+    if (!clienteSelecionado || dadosBrutos.length === 0) {
+      setKpiData({ leads: 0, saudacoes: 0, conversas: 0, agendamentos: 0 });
+      setDadosGrafico([]);
+      return;
+    }
 
     // Filtra as linhas do cliente escolhido
     const linhasDoCliente = dadosBrutos.filter(item => item.id_cliente === clienteSelecionado);
 
-    // Soma as métricas caso tenha mais de uma linha (ex: múltiplas semanas)
-    let leads = 0, saudacoes = 0, conversas = 0, agendamentos = 0;
+    // Na nova tabela cada linha é um lead e o 'status_funil' diz onde ele está.
+    // O funil tem a lógica acumulativa: 
+    // um agendamento TAMBÉM é uma conversa, que TAMBÉM é uma saudação.
+    let countLead = 0;
+    let countSaudacao = 0;
+    let countConversa = 0;
+    let countAgendamento = 0;
 
     linhasDoCliente.forEach(linha => {
-      leads += linha.total_leads || 0;
-      saudacoes += linha.saudacoes_respondidas || 0;
-      conversas += linha.conversas_continuadas || 0;
-      agendamentos += linha.total_agendamentos || 0;
+      countLead++; // Todo lead na tabela constou na primeira etapa
+      
+      const status = linha.status_funil;
+      if (status === 'Saudacao' || status === 'Conversa' || status === 'Agendamento') {
+        countSaudacao++;
+      }
+      if (status === 'Conversa' || status === 'Agendamento') {
+        countConversa++;
+      }
+      if (status === 'Agendamento') {
+        countAgendamento++;
+      }
     });
 
-    setKpiData({ leads, saudacoes, conversas, agendamentos });
+    setKpiData({ leads: countLead, saudacoes: countSaudacao, conversas: countConversa, agendamentos: countAgendamento });
 
     // Formata os dados para a biblioteca Recharts (Funil com Área)
     setDadosGrafico([
-      { etapa: '1. Leads', valor: leads },
-      { etapa: '2. Saudações', valor: saudacoes },
-      { etapa: '3. Conversas', valor: conversas },
-      { etapa: '4. Agendamentos', valor: agendamentos },
+      { etapa: '1. Leads', valor: countLead },
+      { etapa: '2. Saudações', valor: countSaudacao },
+      { etapa: '3. Conversas', valor: countConversa },
+      { etapa: '4. Agendamentos', valor: countAgendamento },
     ]);
   };
 
@@ -262,6 +288,30 @@ export default function DashboardLeads() {
      }
   };
 
+  const renomearClienteNoDB = async (e) => {
+    e.preventDefault();
+    if (!dbClienteAntigo || !dbClienteNovo) return alert("Selecione o cliente antigo e digite o novo nome.");
+
+    if(window.confirm(`Deseja renomear TODOS os leads de '${dbClienteAntigo}' para '${dbClienteNovo}' no banco de dados?`)) {
+      setCarregando(true);
+      const { error } = await supabase
+        .from('leads_clientes')
+        .update({ id_cliente: dbClienteNovo })
+        .eq('id_cliente', dbClienteAntigo);
+
+      if (!error) {
+        alert("Cliente renomeado no banco de dados com sucesso!");
+        setDbClienteAntigo('');
+        setDbClienteNovo('');
+        // Recarrega os dados pra refletir a alteração no dashboard e nos selects
+        carregarDados(); 
+      } else {
+        alert("Erro ao renomear: " + error.message);
+        setCarregando(false);
+      }
+    }
+  };
+
   // ---------------- RENDERIZAÇÃO DA TELA DE LOGIN ----------------
   if (!currentUser) {
     return (
@@ -300,14 +350,6 @@ export default function DashboardLeads() {
   }
 
   // ---------------- RENDERIZAÇÃO PRINCIPAL ----------------
-  if (carregando) {
-    return (
-      <div className="loading-container">
-        <div className="spinner"></div>
-        <div className="loading-text">Carregando métricas...</div>
-      </div>
-    );
-  }
 
   const coresFunil = ['#3b82f6', '#8b5cf6', '#f59e0b', '#10b981'];
 
@@ -362,6 +404,12 @@ export default function DashboardLeads() {
                   value={customEndDate}
                   onChange={(e) => setCustomEndDate(e.target.value)} 
                 />
+                <button 
+                  onClick={carregarDados}
+                  style={{ padding: '0.4rem 0.8rem', backgroundColor: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                >
+                  Buscar
+                </button>
               </div>
             )}
           </div>
@@ -374,9 +422,13 @@ export default function DashboardLeads() {
                 value={clienteSelecionado}
                 onChange={(e) => setClienteSelecionado(e.target.value)}
               >
-                {clientes.map(cliente => (
-                  <option key={cliente} value={cliente}>{cliente}</option>
-                ))}
+                {clientes.map(cliente => {
+                  const usuarioVinculado = allUsers.find(u => u.id_cliente === cliente);
+                  const nomeExibicao = usuarioVinculado ? usuarioVinculado.username : cliente;
+                  return (
+                    <option key={cliente} value={cliente}>{nomeExibicao}</option>
+                  );
+                })}
               </select>
             ) : (
                 <div style={{ padding: '0.5rem', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '6px', color: '#f8fafc', fontSize: '0.9rem' }}>
@@ -392,7 +444,12 @@ export default function DashboardLeads() {
       </header>
 
       {/* Main Content */}
-      <main style={{ display: 'flex', flexDirection: 'column', gap: '2rem', flexGrow: 1 }}>
+      <main style={{ display: 'flex', flexDirection: 'column', gap: '2rem', flexGrow: 1, position: 'relative' }}>
+        {carregando && (
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', zIndex: 50, display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '12px' }}>
+             <div className="spinner"></div>
+          </div>
+        )}
         {/* KPI Cards Grid (Métricas Base) */}
         <section className="kpi-grid">
           <div className="kpi-card" style={{ '--accent-gradient': 'linear-gradient(135deg, #3b82f6, #60a5fa)' }}>
@@ -429,7 +486,7 @@ export default function DashboardLeads() {
           </div>
           
           <div className="kpi-card" style={{ '--accent-gradient': 'linear-gradient(135deg, #0ea5e9, #38bdf8)', borderTop: '2px solid #0ea5e9' }}>
-            <div className="kpi-label">Taxa de Conversão</div>
+            <div className="kpi-label">Taxa de Retenção</div>
             <div className="kpi-value">{taxaConversaoConversa}</div>
             <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>Conversas / Saudações</p>
           </div>
@@ -445,23 +502,49 @@ export default function DashboardLeads() {
         <section className="chart-container-wrapper" style={{ minHeight: '450px' }}>
           <div className="chart-header">
             <h2 className="chart-title">Análise do Funil (Mapeamento Linear)</h2>
-            <p className="chart-subtitle">Retenção de usuários por etapa (Topo -> Fundo)</p>
+            <p className="chart-subtitle">Retenção de usuários por etapa (Topo &gt; Fundo)</p>
           </div>
           <div style={{ width: '100%', height: '350px' }}>
             <ResponsiveContainer width="100%" height="100%">
               <FunnelChart>
+                <defs>
+                  {/* Gradients for Sophisticated Look */}
+                  <linearGradient id="colorLeads" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#1e40af" stopOpacity={1} />
+                  </linearGradient>
+                  <linearGradient id="colorSaudacoes" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#5b21b6" stopOpacity={1} />
+                  </linearGradient>
+                  <linearGradient id="colorConversas" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#b45309" stopOpacity={1} />
+                  </linearGradient>
+                  <linearGradient id="colorAgendamentos" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#047857" stopOpacity={1} />
+                  </linearGradient>
+                  {/* Drop Shadow Filter */}
+                  <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feDropShadow dx="0" dy="8" stdDeviation="6" floodColor="#000000" floodOpacity="0.4"/>
+                  </filter>
+                </defs>
                 <Tooltip content={<CustomTooltip />} />
                 <Funnel
                   dataKey="valor"
                   data={dadosGrafico}
                   isAnimationActive
                   labelLine={false}
+                  filter="url(#shadow)"
                 >
-                  <LabelList position="right" fill="#e2e8f0" stroke="none" dataKey="etapa" style={{ fontSize: '14px', fontWeight: '500'}} />
+                  <LabelList position="right" fill="#e2e8f0" stroke="none" dataKey="etapa" style={{ fontSize: '15px', fontWeight: 'bold'}} />
+                  <LabelList position="center" fill="#ffffff" stroke="none" dataKey="valor" style={{ fontSize: '20px', fontWeight: '800', textShadow: '0px 2px 4px rgba(0,0,0,0.5)' }} />
                   {
-                    dadosGrafico.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={coresFunil[index % coresFunil.length]} />
-                    ))
+                    dadosGrafico.map((entry, index) => {
+                      const gradIds = ['url(#colorLeads)', 'url(#colorSaudacoes)', 'url(#colorConversas)', 'url(#colorAgendamentos)'];
+                      return <Cell key={`cell-${index}`} fill={gradIds[index % gradIds.length]} stroke="#1e293b" strokeWidth={2} />;
+                    })
                   }
                 </Funnel>
               </FunnelChart>
@@ -479,6 +562,32 @@ export default function DashboardLeads() {
               <button onClick={() => setIsAdminModalOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
             </div>
             
+            <div style={{ marginBottom: '2rem', padding: '1rem', backgroundColor: '#0f172a', borderRadius: '8px' }}>
+              <h3 style={{ color: '#f8fafc', marginTop: 0, marginBottom: '1rem', fontSize: '1.1rem' }}>Renomear Cliente no Banco de Dados</h3>
+              <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '1rem' }}>Isso altera o ID do cliente em todas as linhas da tabela leads_clientes.</p>
+              <form onSubmit={renomearClienteNoDB} style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <select value={dbClienteAntigo} onChange={(e) => setDbClienteAntigo(e.target.value)} style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #334155', backgroundColor: '#1e293b', color: '#fff' }}>
+                  <option value="">Selecione o Cliente Antigo...</option>
+                  {clientes.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                <input 
+                  type="text" 
+                  placeholder="Novo ID/Nome desejado" 
+                  value={dbClienteNovo} 
+                  onChange={(e) => setDbClienteNovo(e.target.value)} 
+                  style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #334155', backgroundColor: '#1e293b', color: '#fff' }} 
+                />
+                <button type="submit" style={{ padding: '0.5rem 1rem', backgroundColor: '#f59e0b', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                  Renomear no DB
+                </button>
+              </form>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <h3 style={{ color: '#f8fafc', marginTop: 0, fontSize: '1.1rem' }}>Vincular Usuários (Acesso)</h3>
+            </div>
             <form onSubmit={criarOuAtualizarUsuario} style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '2rem', padding: '1rem', backgroundColor: '#0f172a', borderRadius: '8px' }}>
               <input type="text" placeholder="Usuário" value={newUsername} onChange={(e)=>setNewUsername(e.target.value)} style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #334155', backgroundColor: '#1e293b', color: '#fff' }} />
               <input type="text" placeholder="Senha Nova" value={newPassword} onChange={(e)=>setNewPassword(e.target.value)} style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #334155', backgroundColor: '#1e293b', color: '#fff' }} />
@@ -487,7 +596,13 @@ export default function DashboardLeads() {
                 <option value="admin">Admin</option>
               </select>
               {newRole === 'cliente' && (
-                <input type="text" placeholder="id do cliente (Tabela)" value={newIdCliente} onChange={(e)=>setNewIdCliente(e.target.value)} style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #334155', backgroundColor: '#1e293b', color: '#fff' }} />
+                <input 
+                  type="text" 
+                  placeholder="ID do Cliente na Tabela (Ex: email@syntax.com)" 
+                  value={newIdCliente} 
+                  onChange={(e)=>setNewIdCliente(e.target.value)} 
+                  style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #334155', backgroundColor: '#1e293b', color: '#fff' }} 
+                />
               )}
               <button type="submit" style={{ padding: '0.5rem 1rem', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Salvar</button>
             </form>
@@ -495,10 +610,10 @@ export default function DashboardLeads() {
             <table style={{ width: '100%', borderCollapse: 'collapse', color: '#f8fafc' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left' }}>
-                  <th style={{ padding: '0.5rem' }}>Usuário</th>
+                  <th style={{ padding: '0.5rem' }}>Usuário / Empresa</th>
                   <th style={{ padding: '0.5rem' }}>Senha</th>
-                  <th style={{ padding: '0.5rem' }}>Role</th>
-                  <th style={{ padding: '0.5rem' }}>ID Cliente Vinculado</th>
+                  <th style={{ padding: '0.5rem' }}>Tipo</th>
+                  <th style={{ padding: '0.5rem' }}>ID Cliente (Filtro DB)</th>
                   <th style={{ padding: '0.5rem' }}>Ações</th>
                 </tr>
               </thead>
@@ -507,7 +622,7 @@ export default function DashboardLeads() {
                   <tr key={u.id} style={{ borderBottom: '1px solid #334155' }}>
                     <td style={{ padding: '0.5rem' }}>{u.username}</td>
                     <td style={{ padding: '0.5rem', color: '#94a3b8' }}>{u.password}</td>
-                    <td style={{ padding: '0.5rem' }}>{u.role}</td>
+                    <td style={{ padding: '0.5rem' }}>{u.role === 'admin' ? 'Administrador' : 'Cliente'}</td>
                     <td style={{ padding: '0.5rem' }}>{u.id_cliente || '-'}</td>
                     <td style={{ padding: '0.5rem' }}>
                       <button onClick={() => { setNewUsername(u.username); setNewRole(u.role); setNewIdCliente(u.id_cliente || ''); }} style={{ marginRight: '0.5rem', padding: '0.2rem 0.5rem', backgroundColor: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Editar</button>
