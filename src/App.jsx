@@ -807,7 +807,10 @@ export default function DashboardLeads() {
                   : '';
                 return (
                   <div key={lead.id || idx}
-                    onClick={() => setSelectedLead(lead)}
+                    onClick={() => {
+                      setSelectedLead(lead);
+                      setIsEditingLead(false);
+                    }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '0.8rem',
                       padding: '0.7rem 0.9rem', borderRadius: '10px',

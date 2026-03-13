@@ -250,7 +250,10 @@ export default function TodosOsLeads({ currentUser, clienteSelecionado, supabase
                   : '';
                 return (
                   <div key={lead.id || idx}
-                    onClick={() => setSelectedLead(lead)}
+                    onClick={() => {
+                      setSelectedLead(lead);
+                      setIsEditingLead(false);
+                    }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '0.8rem',
                       padding: '0.85rem 1rem', borderRadius: '12px',
