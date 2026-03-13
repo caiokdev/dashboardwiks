@@ -117,15 +117,15 @@ export default function DashboardLeads() {
     const linhas = dadosBrutos.filter(item => item.id_cliente === clienteSelecionado);
     let countLead = 0, countSaudacao = 0, countConversa = 0, countAgendamento = 0;
     linhas.forEach(linha => {
-      countLead++;
       const s = linha.status_funil;
-      if (s === 'Saudacao' || s === 'Conversa' || s === 'Agendamento') countSaudacao++;
-      if (s === 'Conversa' || s === 'Agendamento') countConversa++;
-      if (s === 'Agendamento') countAgendamento++;
+      if (s === 'Lead' || !s) countLead++;
+      else if (s === 'Saudacao') countSaudacao++;
+      else if (s === 'Conversa') countConversa++;
+      else if (s === 'Agendamento') countAgendamento++;
     });
     setKpiData({ leads: countLead, saudacoes: countSaudacao, conversas: countConversa, agendamentos: countAgendamento });
     setDadosGrafico([
-      { etapa: '1. Leads', valor: countLead },
+      { etapa: '1. Apenas Leads', valor: countLead },
       { etapa: '2. Saudacoes', valor: countSaudacao },
       { etapa: '3. Conversas', valor: countConversa },
       { etapa: '4. Agendamentos', valor: countAgendamento },
@@ -133,9 +133,10 @@ export default function DashboardLeads() {
   };
 
   const calcularTaxa = (parte, todo) => todo === 0 ? '0.0%' : ((parte / todo) * 100).toFixed(1) + '%';
-  const taxaResposta = calcularTaxa(kpiData.saudacoes, kpiData.leads);
-  const taxaConversaoConversa = calcularTaxa(kpiData.conversas, kpiData.saudacoes);
-  const taxaAgendamento = calcularTaxa(kpiData.agendamentos, kpiData.leads);
+  const totalLeads = kpiData.leads + kpiData.saudacoes + kpiData.conversas + kpiData.agendamentos;
+  const taxaResposta = calcularTaxa(kpiData.saudacoes + kpiData.conversas + kpiData.agendamentos, totalLeads);
+  const taxaConversaoConversa = calcularTaxa(kpiData.conversas + kpiData.agendamentos, kpiData.saudacoes + kpiData.conversas + kpiData.agendamentos);
+  const taxaAgendamento = calcularTaxa(kpiData.agendamentos, totalLeads);
 
   // AUTH
   const handleLogin = async (e) => {
@@ -513,17 +514,17 @@ export default function DashboardLeads() {
         {/* KPI Cards Row 1 */}
         <section className="kpi-grid">
           <div className="kpi-card" style={{ '--accent-gradient': 'linear-gradient(135deg, #00b0ff, #0077d6)' }}>
-            <div className="kpi-label">Total de Leads</div>
+            <div className="kpi-label">Apenas Leads (Nao resp.)</div>
             <div className="kpi-value">{kpiData.leads}</div>
             <svg className="kpi-icon-wrapper" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
           </div>
           <div className="kpi-card" style={{ '--accent-gradient': 'linear-gradient(135deg, #8b5cf6, #5b21b6)' }}>
-            <div className="kpi-label">Saudacoes Respondidas</div>
+            <div className="kpi-label">Pararam na Saudacao</div>
             <div className="kpi-value">{kpiData.saudacoes}</div>
             <svg className="kpi-icon-wrapper" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
           </div>
           <div className="kpi-card" style={{ '--accent-gradient': 'linear-gradient(135deg, #f59e0b, #b45309)' }}>
-            <div className="kpi-label">Conversas Continuadas</div>
+            <div className="kpi-label">Em Conversacao (Ainda nao agendou)</div>
             <div className="kpi-value">{kpiData.conversas}</div>
             <svg className="kpi-icon-wrapper" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12c0 2.457.886 4.706 2.35 6.444.605.717.842 1.649.658 2.571l-.164.82a1.002 1.002 0 0 0 1.295 1.139l.995-.331a3 3 0 0 1 2.428.146A9.957 9.957 0 0 0 12 22Z"></path><path d="m9 12 2 2 4-4"></path></svg>
           </div>
@@ -643,10 +644,10 @@ export default function DashboardLeads() {
             <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minHeight: '180px', position: 'relative' }}>
               {(() => {
                 const pieItems = [
-                  { label: 'Apenas Lead',   valor: Math.max(0, kpiData.leads - kpiData.saudacoes),            color: '#00b0ff' },
-                  { label: 'Saudou',        valor: Math.max(0, kpiData.saudacoes - kpiData.conversas),        color: '#8b5cf6' },
-                  { label: 'Conversou',     valor: Math.max(0, kpiData.conversas - kpiData.agendamentos),     color: '#f59e0b' },
-                  { label: 'Agendou',       valor: kpiData.agendamentos,                                       color: '#00e676' },
+                  { label: 'Apenas Lead',   valor: kpiData.leads,         color: '#00b0ff' },
+                  { label: 'Saudou',        valor: kpiData.saudacoes,     color: '#8b5cf6' },
+                  { label: 'Conversou',     valor: kpiData.conversas,     color: '#f59e0b' },
+                  { label: 'Agendou',       valor: kpiData.agendamentos,  color: '#00e676' },
                 ];
                 const total = pieItems.reduce((s, d) => s + d.valor, 0);
                 const cx = 200, cy = 200, outerR = 170, innerR = 96;
@@ -914,9 +915,24 @@ export default function DashboardLeads() {
                 {!isEditingLead && (
                   <button onClick={(e) => {
                     e.stopPropagation();
+                    
+                    let parsedPhone = selectedLead.contato || '';
+                    if (!parsedPhone && selectedLead.id_lead_planilha && /^\d+$/.test(selectedLead.id_lead_planilha.replace(/\D/g, ''))) {
+                      parsedPhone = selectedLead.id_lead_planilha;
+                    }
+                    if (!parsedPhone && selectedLead.nome && /^\d+$/.test(selectedLead.nome.replace(/\D/g, ''))) {
+                      parsedPhone = selectedLead.nome;
+                    }
+
+                    // Format phone for the input mask
+                    const digits = parsedPhone.replace(/\D/g, '').slice(0, 11);
+                    let masked = digits;
+                    if (digits.length > 2) masked = `(${digits.slice(0,2)}) ${digits.slice(2)}`;
+                    if (digits.length > 7) masked = `(${digits.slice(0,2)}) ${digits.slice(2,7)}-${digits.slice(7)}`;
+
                     setEditLeadData({
-                      nome: selectedLead.nome || '',
-                      contato: selectedLead.contato || '',
+                      nome: (selectedLead.nome && !/^\d+$/.test(selectedLead.nome.replace(/\D/g, ''))) ? selectedLead.nome : '',
+                      contato: masked,
                       status_funil: selectedLead.status_funil || 'Lead',
                       observacoes: selectedLead.observacoes || ''
                     });
