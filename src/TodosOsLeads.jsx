@@ -9,6 +9,8 @@ export default function TodosOsLeads({ currentUser, clienteSelecionado, supabase
   const [carregando, setCarregando] = useState(false);
   const [leads, setLeads] = useState([]);
   const [selectedLead, setSelectedLead] = useState(null);
+  const [isEditingLead, setIsEditingLead] = useState(false); // Edit mode for selected lead
+  const [editLeadData, setEditLeadData] = useState({}); // Form data for editing lead
 
   useEffect(() => {
     carregarLeads();
@@ -71,6 +73,35 @@ export default function TodosOsLeads({ currentUser, clienteSelecionado, supabase
     'Saudacao': { bg: 'rgba(139,92,246,0.2)', text: '#a78bfa', label: 'Saudou', icon: '👋' },
     'Conversa': { bg: 'rgba(245,158,11,0.2)', text: '#fbbf24', label: 'Conversou', icon: '💬' },
     'Agendamento': { bg: 'rgba(0,230,118,0.15)', text: '#00e676', label: 'Agendou', icon: '📅' },
+  };
+
+  const handleSalvarEdicaoLead = async (e) => {
+    e.preventDefault();
+    if (!selectedLead) return;
+    
+    // Validate phone only if it is provided and not empty
+    if (editLeadData.contato) {
+      const digits = editLeadData.contato.replace(/\D/g, '');
+      if (digits.length !== 11) { alert('O WhatsApp deve ter exatamente 11 digitos (DDD + 9 numeros).'); return; }
+    }
+
+    setCarregando(true);
+    const { error } = await supabase.from('leads_clientes').update({
+      nome: editLeadData.nome,
+      contato: editLeadData.contato,
+      status_funil: editLeadData.status_funil,
+      observacoes: editLeadData.observacoes,
+    }).eq('id', selectedLead.id);
+
+    if (!error) {
+      alert('Lead atualizado com sucesso!');
+      setIsEditingLead(false);
+      setSelectedLead({ ...selectedLead, ...editLeadData });
+      carregarLeads();
+    } else {
+      alert('Erro ao atualizar lead: ' + error.message);
+    }
+    setCarregando(false);
   };
 
   return (
@@ -304,16 +335,40 @@ export default function TodosOsLeads({ currentUser, clienteSelecionado, supabase
                 </div>
                 <div style={{ flexGrow: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '1.15rem', fontWeight: 700, color: '#f1f5f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {selectedLead.nome || selectedLead.id_lead_planilha || 'Lead sem nome'}
+                    {isEditingLead ? "Editar Lead" : (selectedLead.nome || selectedLead.id_lead_planilha || 'Lead sem nome')}
                   </div>
-                  <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span style={{ padding: '0.2rem 0.7rem', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700, background: stage.bg, color: stage.text, border: `1px solid ${stage.text}44`, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                      {stage.icon} {stage.label}
-                    </span>
-                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{dataFormatada}</span>
-                  </div>
+                  {!isEditingLead && (
+                    <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ padding: '0.2rem 0.7rem', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700, background: stage.bg, color: stage.text, border: `1px solid ${stage.text}44`, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        {stage.icon} {stage.label}
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{dataFormatada}</span>
+                    </div>
+                  )}
                 </div>
-                <button onClick={() => setSelectedLead(null)} style={{
+                
+                {!isEditingLead && (
+                  <button onClick={(e) => {
+                    e.stopPropagation();
+                    setEditLeadData({
+                      nome: selectedLead.nome || '',
+                      contato: selectedLead.contato || '',
+                      status_funil: selectedLead.status_funil || 'Lead',
+                      observacoes: selectedLead.observacoes || ''
+                    });
+                    setIsEditingLead(true);
+                  }} style={{
+                    background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '8px', padding: '0.4rem 0.8rem', color: '#3b82f6',
+                    cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    transition: 'all 0.2s'
+                  }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                    Editar
+                  </button>
+                )}
+
+                <button onClick={() => { setSelectedLead(null); setIsEditingLead(false); }} style={{
                   background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
                   borderRadius: '50%', width: '32px', height: '32px', color: '#94a3b8',
                   cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
@@ -326,46 +381,96 @@ export default function TodosOsLeads({ currentUser, clienteSelecionado, supabase
 
               {/* Body */}
               <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-                {/* Contact */}
-                {selectedLead.contato && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.8rem 1rem', background: 'rgba(0,176,255,0.07)', borderRadius: '10px', border: '1px solid rgba(0,176,255,0.15)' }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00b0ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 12 19.79 19.79 0 0 1 1.08 3.4 2 2 0 0 1 3.05 1h3a2 2 0 0 1 2 1.72c.13 1.02.37 2.03.71 3-.1.24-.6.78-1.17 1.08a16 16 0 0 0 6.29 6.29c.3-.57.84-1.07 1.08-1.17.97.34 1.98.58 3 .71A2 2 0 0 1 22 16.92z"/></svg>
+                {isEditingLead ? (
+                  <form onSubmit={handleSalvarEdicaoLead} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div>
-                      <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.1rem', fontWeight: 500 }}>WhatsApp</div>
-                      <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e2e8f0' }}>{selectedLead.contato}</div>
+                      <label style={{ color: '#cbd5e1', fontSize: '0.85rem', mb: '0.3rem', display: 'block' }}>Nome do Lead</label>
+                      <input type="text" value={editLeadData.nome} onChange={e => setEditLeadData({...editLeadData, nome: e.target.value})} 
+                        style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', backgroundColor: 'rgba(0,0,0,0.3)', color: '#fff' }} />
                     </div>
-                  </div>
-                )}
-
-                {/* Interaction flags */}
-                <div>
-                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.6rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Jornada do Lead</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.8rem' }}>
-                    {fields.map(f => (
-                      <div key={f.label} style={{
-                        padding: '1rem 0.8rem', borderRadius: '12px', textAlign: 'center',
-                        background: isSim(f.value) ? 'linear-gradient(145deg, rgba(0,230,118,0.1) 0%, rgba(0,230,118,0.05) 100%)' : 'rgba(255,255,255,0.02)',
-                        border: isSim(f.value) ? '1px solid rgba(0,230,118,0.25)' : '1px solid rgba(255,255,255,0.06)',
-                        boxShadow: isSim(f.value) ? 'inset 0 1px 1px rgba(255,255,255,0.1)' : 'none'
-                      }}>
-                        <div style={{ fontSize: '1.4rem', marginBottom: '0.4rem' }}>{f.icon}</div>
-                        <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginBottom: '0.5rem', lineHeight: 1.3, fontWeight: 500 }}>{f.label}</div>
-                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: isSim(f.value) ? '#00e676' : '#f87171' }}>
-                          {f.value || 'Nao'}
+                    <div>
+                      <label style={{ color: '#cbd5e1', fontSize: '0.85rem', mb: '0.3rem', display: 'block' }}>WhatsApp (DDD + 9 digitos)</label>
+                      <input type="tel" value={editLeadData.contato} maxLength={15} 
+                        onChange={e => {
+                          const digits = e.target.value.replace(/\D/g, '').slice(0, 11);
+                          let masked = digits;
+                          if (digits.length > 2) masked = `(${digits.slice(0,2)}) ${digits.slice(2)}`;
+                          if (digits.length > 7) masked = `(${digits.slice(0,2)}) ${digits.slice(2,7)}-${digits.slice(7)}`;
+                          setEditLeadData({...editLeadData, contato: masked});
+                        }} 
+                        style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', backgroundColor: 'rgba(0,0,0,0.3)', color: '#fff' }} />
+                    </div>
+                    <div>
+                      <label style={{ color: '#cbd5e1', fontSize: '0.85rem', mb: '0.3rem', display: 'block' }}>Estágio no Funil</label>
+                      <select value={editLeadData.status_funil} onChange={e => setEditLeadData({...editLeadData, status_funil: e.target.value})}
+                        style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', backgroundColor: 'rgba(0,0,0,0.3)', color: '#fff' }}>
+                        <option value="Lead" style={{backgroundColor: '#1a0f3a'}}>Lead (Não Respondeu)</option>
+                        <option value="Saudacao" style={{backgroundColor: '#1a0f3a'}}>Saudação (Respondeu)</option>
+                        <option value="Conversa" style={{backgroundColor: '#1a0f3a'}}>Conversa</option>
+                        <option value="Agendamento" style={{backgroundColor: '#1a0f3a'}}>Agendamento</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ color: '#cbd5e1', fontSize: '0.85rem', mb: '0.3rem', display: 'block' }}>Observações</label>
+                      <textarea rows="3" value={editLeadData.observacoes} onChange={e => setEditLeadData({...editLeadData, observacoes: e.target.value})}
+                        style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', backgroundColor: 'rgba(0,0,0,0.3)', color: '#fff', resize: 'vertical' }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.8rem', marginTop: '0.5rem', justifyContent: 'flex-end' }}>
+                      <button type="button" onClick={() => setIsEditingLead(false)} style={{
+                        background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: '#cbd5e1',
+                        padding: '0.7rem 1.2rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600,
+                      }}>Cancelar</button>
+                      <button type="submit" disabled={carregando} style={{
+                        background: 'linear-gradient(135deg, #00b0ff, #0077d6)', color: '#fff', border: 'none',
+                        padding: '0.7rem 1.5rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 700,
+                        opacity: carregando ? 0.7 : 1
+                      }}>{carregando ? 'Salvando...' : 'Salvar Alterações'}</button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    {/* Contact */}
+                    {selectedLead.contato && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.8rem 1rem', background: 'rgba(0,176,255,0.07)', borderRadius: '10px', border: '1px solid rgba(0,176,255,0.15)' }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00b0ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 12 19.79 19.79 0 0 1 1.08 3.4 2 2 0 0 1 3.05 1h3a2 2 0 0 1 2 1.72c.13 1.02.37 2.03.71 3-.1.24-.6.78-1.17 1.08a16 16 0 0 0 6.29 6.29c.3-.57.84-1.07 1.08-1.17.97.34 1.98.58 3 .71A2 2 0 0 1 22 16.92z"/></svg>
+                        <div>
+                          <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.1rem', fontWeight: 500 }}>WhatsApp</div>
+                          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e2e8f0' }}>{selectedLead.contato}</div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    )}
 
-                {/* Observations */}
-                {selectedLead.observacoes && (
-                  <div>
-                    <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.6rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Observações</div>
-                    <div style={{ padding: '1rem 1.2rem', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.3)' }}>
-                      <div style={{ fontSize: '0.9rem', color: '#cbd5e1', lineHeight: 1.6 }}>{selectedLead.observacoes}</div>
+                    {/* Interaction flags */}
+                    <div>
+                      <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.6rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Jornada do Lead</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.8rem' }}>
+                        {fields.map(f => (
+                          <div key={f.label} style={{
+                            padding: '1rem 0.8rem', borderRadius: '12px', textAlign: 'center',
+                            background: isSim(f.value) ? 'linear-gradient(145deg, rgba(0,230,118,0.1) 0%, rgba(0,230,118,0.05) 100%)' : 'rgba(255,255,255,0.02)',
+                            border: isSim(f.value) ? '1px solid rgba(0,230,118,0.25)' : '1px solid rgba(255,255,255,0.06)',
+                            boxShadow: isSim(f.value) ? 'inset 0 1px 1px rgba(255,255,255,0.1)' : 'none'
+                          }}>
+                            <div style={{ fontSize: '1.4rem', marginBottom: '0.4rem' }}>{f.icon}</div>
+                            <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginBottom: '0.5rem', lineHeight: 1.3, fontWeight: 500 }}>{f.label}</div>
+                            <div style={{ fontSize: '0.9rem', fontWeight: 800, color: isSim(f.value) ? '#00e676' : '#f87171' }}>
+                              {f.value || 'Nao'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+
+                    {/* Observations */}
+                    {selectedLead.observacoes && (
+                      <div>
+                        <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.6rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Observações</div>
+                        <div style={{ padding: '1rem 1.2rem', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.3)' }}>
+                          <div style={{ fontSize: '0.9rem', color: '#cbd5e1', lineHeight: 1.6 }}>{selectedLead.observacoes}</div>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
