@@ -54,7 +54,9 @@ export default function DashboardLeads() {
   const [hoveredPieSlice, setHoveredPieSlice] = useState(null); // { label, valor, color, pct, x, y }
   const [selectedLead, setSelectedLead] = useState(null); // Lead clicked for detail modal
   const [isEditingLead, setIsEditingLead] = useState(false); // Edit mode for selected lead
-  const [editLeadData, setEditLeadData] = useState({}); // Form data for editing lead  useEffect(() => {
+  const [editLeadData, setEditLeadData] = useState({}); // Form data for editing lead
+
+  useEffect(() => {
     if (currentUser) {
       if (currentUser.role === 'admin') carregarTodosUsuarios();
       carregarDados();
