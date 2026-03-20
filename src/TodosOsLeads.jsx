@@ -53,6 +53,8 @@ export default function TodosOsLeads({ currentUser, clienteSelecionado, supabase
         query = query.eq('status_funil', 'Conversa'); // Somente quem conversou
       } else if (statusFilter === 'agendou') {
         query = query.eq('status_funil', 'Agendamento');
+      } else if (statusFilter === 'fechou') {
+        query = query.eq('status_funil', 'Fechado');
       }
     }
 
@@ -73,6 +75,7 @@ export default function TodosOsLeads({ currentUser, clienteSelecionado, supabase
     'Saudacao': { bg: 'rgba(139,92,246,0.2)', text: '#a78bfa', label: 'Saudou', icon: '👋' },
     'Conversa': { bg: 'rgba(245,158,11,0.2)', text: '#fbbf24', label: 'Conversou', icon: '💬' },
     'Agendamento': { bg: 'rgba(0,230,118,0.15)', text: '#00e676', label: 'Agendou', icon: '📅' },
+    'Fechado': { bg: 'rgba(134,239,172,0.15)', text: '#86efac', label: 'Fechou Procedimento', icon: '✅' },
   };
 
   const handleSalvarEdicaoLead = async (e) => {
@@ -159,6 +162,7 @@ export default function TodosOsLeads({ currentUser, clienteSelecionado, supabase
               <option value="respondeu" style={{ background: '#1e1035', color: '#fff' }}>Respondeu à Saudação</option>
               <option value="continuou" style={{ background: '#1e1035', color: '#fff' }}>Continuou Conversa</option>
               <option value="agendou" style={{ background: '#1e1035', color: '#fff' }}>Agendou</option>
+              <option value="fechou" style={{ background: '#1e1035', color: '#fff' }}>Fechou Procedimento</option>
             </select>
             <div style={{ position: 'absolute', right: '10px', pointerEvents: 'none', color: '#64748b' }}>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -221,10 +225,10 @@ export default function TodosOsLeads({ currentUser, clienteSelecionado, supabase
         </div>
       </div>
 
-      {/* Leads List Wrapper */}
-      <div className="chart-container-wrapper" style={{ minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
+      {/* Leads List Wrapper - Spreadsheet View */}
+      <div className="chart-container-wrapper" style={{ minHeight: '450px', display: 'flex', flexDirection: 'column' }}>
         
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
           <div style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: 600 }}>
             {carregando ? 'Buscando leads...' : `${leads.length} leads encontrados no periodo`}
           </div>
@@ -235,65 +239,67 @@ export default function TodosOsLeads({ currentUser, clienteSelecionado, supabase
              <div className="spinner"></div>
            </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '0.8rem', alignContent: 'start', overflowY: 'auto' }}>
+          <div className="leads-table-container" style={{ flexGrow: 1 }}>
             {leads.length === 0 ? (
-              <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '3rem', opacity: 0.6, gap: '0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4rem', opacity: 0.6, gap: '0.5rem' }}>
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 <p style={{ color: '#94a3b8', fontSize: '1rem', marginTop: '1rem' }}>Nenhum lead encontrado neste periodo.</p>
               </div>
             ) : (
-              leads.map((lead, idx) => {
-                const fStatus = lead.status_funil || 'Lead';
-                const stage = stageColors[fStatus] || stageColors['Lead'];
-                const dataFormatada = lead.data_entrada
-                  ? new Date(lead.data_entrada).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
-                  : '';
-                return (
-                  <div key={lead.id || idx}
-                    onClick={() => {
-                      setSelectedLead(lead);
-                      setIsEditingLead(false);
-                    }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '0.8rem',
-                      padding: '0.85rem 1rem', borderRadius: '12px',
-                      backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid rgba(255,255,255,0.06)',
-                      transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)', cursor: 'pointer',
-                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)'; e.currentTarget.style.borderColor = `${stage.text}55`; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 8px 16px -4px rgba(0,0,0,0.3), 0 0 12px ${stage.text}1a`; }}
-                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(30, 41, 59, 0.4)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'; }}
-                  >
-                    <div style={{ width: '42px', height: '42px', borderRadius: '50%', flexShrink: 0, background: 'linear-gradient(135deg, #00b0ff, #00e676)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', fontWeight: 800, color: '#0a0a14', boxShadow: 'inset 0 -2px 5px rgba(0,0,0,0.2)' }}>
-                      {(lead.nome || lead.id_lead_planilha || '?').charAt(0).toUpperCase()}
-                    </div>
-                    <div style={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                      <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {lead.nome || lead.id_lead_planilha || lead.contato || 'Lead sem nome'}
-                      </div>
-                      <div style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <span>{lead.nome && !/^\d+$/.test(lead.nome.replace(/\D/g, '')) ? (lead.contato || '') : ''}</span>
-                        {lead.nome && !/^\d+$/.test(lead.nome.replace(/\D/g, '')) && lead.contato && <span style={{color: 'rgba(255,255,255,0.2)'}}>•</span>}
-                        <span>{dataFormatada.split(' ')[0]}</span>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.3rem' }}>
-                      <div style={{ padding: '0.25rem 0.6rem', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 700, backgroundColor: stage.bg, color: stage.text, whiteSpace: 'nowrap', border: `1px solid ${stage.text}22` }}>
-                        {stage.label}
-                      </div>
-                    </div>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginLeft: '0.2rem' }}>
-                      <polyline points="9 18 15 12 9 6"/>
-                    </svg>
-                  </div>
-                );
-              })
+              <table className="leads-table">
+                <thead>
+                  <tr>
+                    <th>Data de Entrada</th>
+                    <th>Nome</th>
+                    <th>WhatsApp/Contato</th>
+                    <th>Estágio do Funil</th>
+                    <th>Observações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leads.map((lead, idx) => {
+                    const fStatus = lead.status_funil || 'Lead';
+                    const stage = stageColors[fStatus] || stageColors['Lead'];
+                    const dataFormatada = lead.data_entrada
+                      ? new Date(lead.data_entrada).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+                      : '-';
+                    
+                    return (
+                      <tr key={lead.id || idx} onClick={() => { setSelectedLead(lead); setIsEditingLead(false); }}>
+                        <td style={{ color: '#94a3b8', fontSize: '0.8rem' }}>{dataFormatada}</td>
+                        <td style={{ fontWeight: 600, color: '#f8fafc' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'linear-gradient(135deg, #00b0ff, #00e676)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 800, color: '#0a0a14' }}>
+                              {(lead.nome || lead.id_lead_planilha || '?').charAt(0).toUpperCase()}
+                            </div>
+                            <span>{lead.nome || 'Sem nome'}</span>
+                          </div>
+                        </td>
+                        <td>
+                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#00b0ff' }}>
+                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 12 19.79 19.79 0 0 1 1.08 3.4 2 2 0 0 1 3.05 1h3a2 2 0 0 1 2 1.72c.13 1.02.37 2.03.71 3-.1.24-.6.78-1.17 1.08a16 16 0 0 0 6.29 6.29c.3-.57.84-1.07 1.08-1.17.97.34 1.98.58 3 .71A2 2 0 0 1 22 16.92z"/></svg>
+                             {lead.contato || lead.id_lead_planilha || '-'}
+                           </div>
+                        </td>
+                        <td>
+                          <div className="status-badge" style={{ backgroundColor: stage.bg, color: stage.text, border: `1px solid ${stage.text}33` }}>
+                            {stage.icon} {stage.label}
+                          </div>
+                        </td>
+                        <td className="truncate-cell" title={lead.observacoes}>
+                          {lead.observacoes || <span style={{ opacity: 0.3 }}>-</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
         )}
       </div>
 
-      {/* Lead Detail Modal - Reused from App.jsx */}
+      {/* Lead Detail Modal */}
       {selectedLead && (() => {
         const fStatus = selectedLead.status_funil || 'Lead';
         const stage = stageColors[fStatus] || stageColors['Lead'];
@@ -301,14 +307,16 @@ export default function TodosOsLeads({ currentUser, clienteSelecionado, supabase
           ? new Date(selectedLead.data_entrada).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
           : 'Nao informado';
 
-        const hasRespondeu = ['Saudacao', 'Conversa', 'Agendamento'].includes(fStatus) ? 'Sim' : 'Nao';
-        const hasContinuou = ['Conversa', 'Agendamento'].includes(fStatus) ? 'Sim' : 'Nao';
-        const hasAgendou = ['Agendamento'].includes(fStatus) ? 'Sim' : 'Nao';
+        const hasRespondeu = ['Saudacao', 'Conversa', 'Agendamento', 'Fechado'].includes(fStatus) ? 'Sim' : 'Nao';
+        const hasContinuou = ['Conversa', 'Agendamento', 'Fechado'].includes(fStatus) ? 'Sim' : 'Nao';
+        const hasAgendou = ['Agendamento', 'Fechado'].includes(fStatus) ? 'Sim' : 'Nao';
+        const hasFechou = fStatus === 'Fechado' ? 'Sim' : 'Nao';
 
         const fields = [
-          { label: 'Respondeu a saudacao?', value: hasRespondeu, icon: '👋' },
-          { label: 'Deu continuidade?', value: hasContinuou, icon: '💬' },
+          { label: 'Respondeu?', value: hasRespondeu, icon: '👋' },
+          { label: 'Continuou?', value: hasContinuou, icon: '💬' },
           { label: 'Agendou?', value: hasAgendou, icon: '📅' },
+          { label: 'Fechou?', value: hasFechou, icon: '✅' },
         ];
         const isSim = v => (v || '').toLowerCase() === 'sim';
         return (
@@ -323,7 +331,6 @@ export default function TodosOsLeads({ currentUser, clienteSelecionado, supabase
               borderRadius: '20px', width: '92%', maxWidth: '650px',
               boxShadow: `0 24px 80px rgba(0,0,0,0.6), 0 0 40px ${stage.text}18`,
               overflow: 'hidden',
-              animation: 'fadeIn 0.2s ease-out'
             }}>
               {/* Header band */}
               <div style={{ padding: '1.5rem', background: `linear-gradient(to right, ${stage.bg}, transparent)`, borderBottom: `1px solid ${stage.text}22`, display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -389,10 +396,7 @@ export default function TodosOsLeads({ currentUser, clienteSelecionado, supabase
                   borderRadius: '50%', width: '32px', height: '32px', color: '#94a3b8',
                   cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                   transition: 'all 0.2s'
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; e.currentTarget.style.color = '#fff'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = '#94a3b8'; }}
-                >✕</button>
+                }}>✕</button>
               </div>
 
               {/* Body */}
@@ -424,6 +428,7 @@ export default function TodosOsLeads({ currentUser, clienteSelecionado, supabase
                         <option value="Saudacao" style={{backgroundColor: '#1a0f3a'}}>Saudação (Respondeu)</option>
                         <option value="Conversa" style={{backgroundColor: '#1a0f3a'}}>Conversa</option>
                         <option value="Agendamento" style={{backgroundColor: '#1a0f3a'}}>Agendamento</option>
+                        <option value="Fechado" style={{backgroundColor: '#1a0f3a'}}>Fechou Procedimento</option>
                       </select>
                     </div>
                     <div>
@@ -459,17 +464,16 @@ export default function TodosOsLeads({ currentUser, clienteSelecionado, supabase
                     {/* Interaction flags */}
                     <div>
                       <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.6rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Jornada do Lead</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.8rem' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.8rem' }}>
                         {fields.map(f => (
                           <div key={f.label} style={{
-                            padding: '1rem 0.8rem', borderRadius: '12px', textAlign: 'center',
-                            background: isSim(f.value) ? 'linear-gradient(145deg, rgba(0,230,118,0.1) 0%, rgba(0,230,118,0.05) 100%)' : 'rgba(255,255,255,0.02)',
-                            border: isSim(f.value) ? '1px solid rgba(0,230,118,0.25)' : '1px solid rgba(255,255,255,0.06)',
-                            boxShadow: isSim(f.value) ? 'inset 0 1px 1px rgba(255,255,255,0.1)' : 'none'
+                            padding: '1rem 0.6rem', borderRadius: '12px', textAlign: 'center',
+                            background: isSim(f.value) ? 'linear-gradient(145deg, rgba(34,197,94,0.1) 0%, rgba(34,197,94,0.05) 100%)' : 'rgba(255,255,255,0.02)',
+                            border: isSim(f.value) ? '1px solid rgba(34,197,94,0.25)' : '1px solid rgba(255,255,255,0.06)',
                           }}>
                             <div style={{ fontSize: '1.4rem', marginBottom: '0.4rem' }}>{f.icon}</div>
-                            <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginBottom: '0.5rem', lineHeight: 1.3, fontWeight: 500 }}>{f.label}</div>
-                            <div style={{ fontSize: '0.9rem', fontWeight: 800, color: isSim(f.value) ? '#00e676' : '#f87171' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginBottom: '0.4rem', fontWeight: 500 }}>{f.label}</div>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 800, color: isSim(f.value) ? '#22c55e' : '#f87171' }}>
                               {f.value || 'Nao'}
                             </div>
                           </div>

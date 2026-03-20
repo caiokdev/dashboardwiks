@@ -38,6 +38,7 @@ export default function DashboardLeads() {
   const [nlRespondeu, setNlRespondeu] = useState('Nao');
   const [nlContinuou, setNlContinuou] = useState('Nao');
   const [nlAgendou, setNlAgendou] = useState('Nao');
+  const [nlFechou, setNlFechou] = useState('Nao');
   const [nlObservacoes, setNlObservacoes] = useState('');
   const [nlIdCliente, setNlIdCliente] = useState('');
 
@@ -45,7 +46,7 @@ export default function DashboardLeads() {
   const [clientes, setClientes] = useState([]);
   const [clienteSelecionado, setClienteSelecionado] = useState('');
   const [dadosGrafico, setDadosGrafico] = useState([]);
-  const [kpiData, setKpiData] = useState({ leads: 0, saudacoes: 0, conversas: 0, agendamentos: 0 });
+  const [kpiData, setKpiData] = useState({ leads: 0, saudacoes: 0, conversas: 0, agendamentos: 0, fechados: 0 });
 
   const [dateFilter, setDateFilter] = useState('30d');
   const [customStartDate, setCustomStartDate] = useState('');
@@ -110,33 +111,35 @@ export default function DashboardLeads() {
 
   const processarDadosDoCliente = () => {
     if (!clienteSelecionado || dadosBrutos.length === 0) {
-      setKpiData({ leads: 0, saudacoes: 0, conversas: 0, agendamentos: 0 });
+      setKpiData({ leads: 0, saudacoes: 0, conversas: 0, agendamentos: 0, fechados: 0 });
       setDadosGrafico([]);
       return;
     }
     const linhas = dadosBrutos.filter(item => item.id_cliente === clienteSelecionado);
-    let countLead = 0, countSaudacao = 0, countConversa = 0, countAgendamento = 0;
+    let countLead = 0, countSaudacao = 0, countConversa = 0, countAgendamento = 0, countFechado = 0;
     linhas.forEach(linha => {
       const s = linha.status_funil;
       if (s === 'Lead' || !s) countLead++;
       else if (s === 'Saudacao') countSaudacao++;
       else if (s === 'Conversa') countConversa++;
       else if (s === 'Agendamento') countAgendamento++;
+      else if (s === 'Fechado') countFechado++;
     });
-    setKpiData({ leads: countLead, saudacoes: countSaudacao, conversas: countConversa, agendamentos: countAgendamento });
+    setKpiData({ leads: countLead, saudacoes: countSaudacao, conversas: countConversa, agendamentos: countAgendamento, fechados: countFechado });
     setDadosGrafico([
       { etapa: '1. Apenas Leads', valor: countLead },
       { etapa: '2. Saudacoes', valor: countSaudacao },
       { etapa: '3. Conversas', valor: countConversa },
       { etapa: '4. Agendamentos', valor: countAgendamento },
+      { etapa: '5. Fechados', valor: countFechado },
     ]);
   };
 
   const calcularTaxa = (parte, todo) => todo === 0 ? '0.0%' : ((parte / todo) * 100).toFixed(1) + '%';
-  const totalLeads = kpiData.leads + kpiData.saudacoes + kpiData.conversas + kpiData.agendamentos;
-  const taxaResposta = calcularTaxa(kpiData.saudacoes + kpiData.conversas + kpiData.agendamentos, totalLeads);
-  const taxaConversaoConversa = calcularTaxa(kpiData.conversas + kpiData.agendamentos, kpiData.saudacoes + kpiData.conversas + kpiData.agendamentos);
-  const taxaAgendamento = calcularTaxa(kpiData.agendamentos, totalLeads);
+  const totalLeads = kpiData.leads + kpiData.saudacoes + kpiData.conversas + kpiData.agendamentos + kpiData.fechados;
+  const taxaResposta = calcularTaxa(kpiData.saudacoes + kpiData.conversas + kpiData.agendamentos + kpiData.fechados, totalLeads);
+  const taxaConversaoConversa = calcularTaxa(kpiData.conversas + kpiData.agendamentos + kpiData.fechados, kpiData.saudacoes + kpiData.conversas + kpiData.agendamentos + kpiData.fechados);
+  const taxaAgendamento = calcularTaxa(kpiData.agendamentos + kpiData.fechados, totalLeads);
 
   // AUTH
   const handleLogin = async (e) => {
@@ -203,6 +206,7 @@ export default function DashboardLeads() {
     if (nlRespondeu === 'Sim') statusFunil = 'Saudacao';
     if (nlContinuou === 'Sim') statusFunil = 'Conversa';
     if (nlAgendou === 'Sim') statusFunil = 'Agendamento';
+    if (nlFechou === 'Sim') statusFunil = 'Fechado';
     let clienteDestino = '';
     if (currentUser.role === 'admin') {
       if (!nlIdCliente) { alert('Selecione um cliente para vincular esse lead.'); setCarregando(false); return; }
@@ -224,7 +228,7 @@ export default function DashboardLeads() {
       alert('Lead cadastrado com sucesso!');
       setIsNovoLeadModalOpen(false);
       setNlNome(''); setNlContato(''); setNlObservacoes('');
-      setNlRespondeu('Nao'); setNlContinuou('Nao'); setNlAgendou('Nao');
+      setNlRespondeu('Nao'); setNlContinuou('Nao'); setNlAgendou('Nao'); setNlFechou('Nao');
       carregarDados();
     } else {
       alert('Erro ao salvar lead: ' + error.message);
@@ -533,6 +537,11 @@ export default function DashboardLeads() {
             <div className="kpi-value">{kpiData.agendamentos}</div>
             <svg className="kpi-icon-wrapper" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
           </div>
+          <div className="kpi-card" style={{ '--accent-gradient': 'linear-gradient(135deg, #86efac, #10b981)' }}>
+            <div className="kpi-label">Fechou Procedimento</div>
+            <div className="kpi-value">{kpiData.fechados}</div>
+            <svg className="kpi-icon-wrapper" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+          </div>
         </section>
 
         {/* KPI Cards Row 2 - Rates */}
@@ -548,9 +557,9 @@ export default function DashboardLeads() {
             <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>Conversas / Saudacoes</p>
           </div>
           <div className="kpi-card" style={{ '--accent-gradient': 'linear-gradient(135deg, #ef4444, #f87171)', borderTop: '2px solid #ef4444' }}>
-            <div className="kpi-label">Taxa de Agendamento</div>
+            <div className="kpi-label">Taxa de Conversao</div>
             <div className="kpi-value">{taxaAgendamento}</div>
-            <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>Agendamentos / Leads</p>
+            <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.5rem' }}>Agendados+Fechados / Leads</p>
           </div>
         </section>
 
@@ -570,6 +579,7 @@ export default function DashboardLeads() {
                   { label: 'Saudacoes',    valor: kpiData.saudacoes,    fill: ['#8b5cf6','#5b21b6'] },
                   { label: 'Conversas',    valor: kpiData.conversas,    fill: ['#f59e0b','#b45309'] },
                   { label: 'Agendamentos', valor: kpiData.agendamentos, fill: ['#00e676','#00994d'] },
+                  { label: 'Fechados',     valor: kpiData.fechados,     fill: ['#86efac','#10b981'] },
                 ];
                 const VW = 380, VH = 330;
                 const tipX = VW / 2, tipY = VH - 20;
@@ -648,6 +658,7 @@ export default function DashboardLeads() {
                   { label: 'Saudou',        valor: kpiData.saudacoes,     color: '#8b5cf6' },
                   { label: 'Conversou',     valor: kpiData.conversas,     color: '#f59e0b' },
                   { label: 'Agendou',       valor: kpiData.agendamentos,  color: '#00e676' },
+                  { label: 'Fechou',        valor: kpiData.fechados,      color: '#22c55e' },
                 ];
                 const total = pieItems.reduce((s, d) => s + d.valor, 0);
                 const cx = 200, cy = 200, outerR = 170, innerR = 96;
@@ -789,6 +800,7 @@ export default function DashboardLeads() {
                 'Saudacao': { bg: 'rgba(139,92,246,0.2)', text: '#a78bfa', label: 'Saudou' },
                 'Conversa': { bg: 'rgba(245,158,11,0.2)', text: '#fbbf24', label: 'Conversou' },
                 'Agendamento': { bg: 'rgba(0,230,118,0.15)', text: '#00e676', label: 'Agendou' },
+                'Fechado': { bg: 'rgba(134,239,172,0.15)', text: '#86efac', label: 'Fechou' },
               };
               const leadsRecentes = dadosBrutos
                 .filter(item => item.id_cliente === clienteSelecionado)
@@ -857,6 +869,7 @@ export default function DashboardLeads() {
           'Saudacao': { bg: 'rgba(139,92,246,0.15)', text: '#a78bfa', label: 'Saudou', icon: '👋' },
           'Conversa': { bg: 'rgba(245,158,11,0.15)', text: '#fbbf24', label: 'Conversou', icon: '💬' },
           'Agendamento': { bg: 'rgba(0,230,118,0.12)', text: '#00e676', label: 'Agendou', icon: '📅' },
+          'Fechado': { bg: 'rgba(134,239,172,0.12)', text: '#86efac', label: 'Fechado', icon: '✅' },
         };
         const fStatus = selectedLead.status_funil || 'Lead';
         const stage = stageColors[fStatus] || stageColors['Lead'];
@@ -864,14 +877,16 @@ export default function DashboardLeads() {
           ? new Date(selectedLead.data_entrada).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
           : 'Nao informado';
 
-        const hasRespondeu = ['Saudacao', 'Conversa', 'Agendamento'].includes(fStatus) ? 'Sim' : 'Nao';
-        const hasContinuou = ['Conversa', 'Agendamento'].includes(fStatus) ? 'Sim' : 'Nao';
-        const hasAgendou = ['Agendamento'].includes(fStatus) ? 'Sim' : 'Nao';
+        const hasRespondeu = ['Saudacao', 'Conversa', 'Agendamento', 'Fechado'].includes(fStatus) ? 'Sim' : 'Nao';
+        const hasContinuou = ['Conversa', 'Agendamento', 'Fechado'].includes(fStatus) ? 'Sim' : 'Nao';
+        const hasAgendou = ['Agendamento', 'Fechado'].includes(fStatus) ? 'Sim' : 'Nao';
+        const hasFechou = fStatus === 'Fechado' ? 'Sim' : 'Nao';
 
         const fields = [
-          { label: 'Respondeu a saudacao?', value: hasRespondeu, icon: '👋' },
-          { label: 'Deu continuidade?', value: hasContinuou, icon: '💬' },
+          { label: 'Respondeu?', value: hasRespondeu, icon: '👋' },
+          { label: 'Continuou?', value: hasContinuou, icon: '💬' },
           { label: 'Agendou?', value: hasAgendou, icon: '📅' },
+          { label: 'Fechou?', value: hasFechou, icon: '✅' },
         ];
         const isSim = v => (v || '').toLowerCase() === 'sim';
         return (
@@ -984,6 +999,7 @@ export default function DashboardLeads() {
                         <option value="Saudacao" style={{backgroundColor: '#1a0f3a'}}>Saudação (Respondeu)</option>
                         <option value="Conversa" style={{backgroundColor: '#1a0f3a'}}>Conversa</option>
                         <option value="Agendamento" style={{backgroundColor: '#1a0f3a'}}>Agendamento</option>
+                        <option value="Fechado" style={{backgroundColor: '#1a0f3a'}}>Fechou Procedimento</option>
                       </select>
                     </div>
                     <div>
@@ -1017,7 +1033,7 @@ export default function DashboardLeads() {
                     )}
 
                     {/* Interaction flags */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.6rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.6rem' }}>
                       {fields.map(f => (
                         <div key={f.label} style={{
                           padding: '0.8rem', borderRadius: '10px', textAlign: 'center',
@@ -1169,6 +1185,7 @@ export default function DashboardLeads() {
                   ['Respondeu?', nlRespondeu, setNlRespondeu],
                   ['Continuou?', nlContinuou, setNlContinuou],
                   ['Agendou?', nlAgendou, setNlAgendou],
+                  ['Fechou?', nlFechou, setNlFechou],
                 ].map(([label, val, setter]) => (
                   <div key={label}>
                     <label style={{ color: '#cbd5e1', fontSize: '0.85rem', marginBottom: '0.3rem', display: 'block' }}>{label}</label>
